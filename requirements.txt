@@ -1,3 +1,5 @@
-python-telegram-bot
-yt-dlp
-flask
+python-telegram-bot==20.7
+yt-dlp==2024.4.9
+Flask==2.3.3
+aiofiles==23.2.1
+aiohttp==3.9.1
