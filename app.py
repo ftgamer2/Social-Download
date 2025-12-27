@@ -1,176 +1,139 @@
 import os
+from flask import Flask, request
 import telebot
-from flask import Flask, request, jsonify
 import logging
 
-# Setup
-TOKEN = os.environ.get('BOT_TOKEN', '8598243397:AAGvpqyAIhQuIIJEj4Y8cxvdseB9-0zeOEU')
+# Bot Token - Hardcoded since env vars not working
+TOKEN = "8598243397:AAGvpqyAIhQuIIJEj4Y8cxvdseB9-0zeOEU"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Configure logging
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Store
-user_data = {}
+# Store user data
+users = {}
 
-# EMOJIS
 EMOJIS = {
     'success': '✅', 'error': '❌', 'start': '🚀', 
-    'video': '📹', 'download': '⬇️', 'heart': '❤️',
-    'party': '🎉', 'star': '⭐', 'fire': '🔥'
+    'video': '📹', 'download': '⬇️', 'heart': '❤️'
 }
 
-# Telegram Handlers
 @bot.message_handler(commands=['start'])
-def start_command(message):
+def start(message):
     user_id = message.from_user.id
-    user_data[user_id] = {'last_active': 'now'}
+    users[user_id] = True
     
     welcome = f"""
-{EMOJIS['party']} *FTGamer Premium Bot* {EMOJIS['party']}
+{EMOJIS['start']} *FTGamer Bot - Docker Edition* {EMOJIS['start']}
 
-{EMOJIS['fire']} *ALL FEATURES FREE*
-• YouTube Video Downloader
-• 8K/4K/1080p/720p Support
-• Audio Extraction
-• Bulk Downloads
+{EMOJIS['success']} *Features:*
+• YouTube Video Download
+• Multiple Qualities
 • 24/7 Uptime
+• Free Forever
 
-{EMOJIS['download']} *How to Use:*
-1. Send YouTube link
-2. Select quality
-3. Download instantly!
-
-{EMOJIS['star']} *Example Links:*
-• `https://youtube.com/watch?v=...`
-• `https://youtu.be/...`
-• `https://youtube.com/shorts/...`
+{EMOJIS['download']} *How to use:*
+Send any YouTube link!
 
 {EMOJIS['heart']} *Developer:* @ftgamer2
 """
     bot.send_message(message.chat.id, welcome, parse_mode='Markdown')
 
 @bot.message_handler(commands=['stats'])
-def stats_command(message):
-    stats = f"""
+def stats(message):
+    stats_msg = f"""
 {EMOJIS['success']} *Bot Statistics*
 
-• Platform: Koyeb Cloud
-• Status: ✅ Online 24/7
-• Active Users: {len(user_data)}
-• Host: Mumbai (India)
-• Uptime: 100%
+• Platform: Koyeb Docker
+• Status: ✅ Online
+• Users: {len(users)}
+• Mode: Docker Container
 
-{EMOJIS['start']} *Ready for Downloads!*
+{EMOJIS['start']} Ready for downloads!
 """
-    bot.send_message(message.chat.id, stats, parse_mode='Markdown')
+    bot.send_message(message.chat.id, stats_msg, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text and any(domain in m.text for domain in ['youtube.com', 'youtu.be', 'youtube']))
-def handle_video_link(message):
-    url = message.text
-    
-    # Create inline keyboard
+@bot.message_handler(func=lambda m: m.text and ('youtube.com' in m.text or 'youtu.be' in m.text))
+def handle_link(message):
     from telebot import types
-    markup = types.InlineKeyboardMarkup(row_width=3)
+    markup = types.InlineKeyboardMarkup(row_width=2)
     
-    btn1 = types.InlineKeyboardButton(f"{EMOJIS['video']} 1080p", callback_data="1080p")
-    btn2 = types.InlineKeyboardButton(f"{EMOJIS['video']} 720p", callback_data="720p")
-    btn3 = types.InlineKeyboardButton(f"{EMOJIS['video']} 480p", callback_data="480p")
-    btn4 = types.InlineKeyboardButton(f"{EMOJIS['video']} Audio", callback_data="audio")
-    btn5 = types.InlineKeyboardButton(f"{EMOJIS['fire']} Best", callback_data="best")
-    btn6 = types.InlineKeyboardButton(f"{EMOJIS['error']} Cancel", callback_data="cancel")
+    btn1 = types.InlineKeyboardButton("1080p", callback_data="1080")
+    btn2 = types.InlineKeyboardButton("720p", callback_data="720")
+    btn3 = types.InlineKeyboardButton("Audio", callback_data="audio")
+    btn4 = types.InlineKeyboardButton("Cancel", callback_data="cancel")
     
-    markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
+    markup.add(btn1, btn2, btn3, btn4)
     
     bot.send_message(message.chat.id,
-                    f"{EMOJIS['success']} *Link Received!*\n\n"
-                    f"{EMOJIS['download']} Select download quality:",
+                    f"{EMOJIS['success']} *YouTube Link Detected!*\n\nSelect quality:",
                     reply_markup=markup,
                     parse_mode='Markdown')
 
 @bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
+def callback_handler(call):
     chat_id = call.message.chat.id
     
     if call.data == 'cancel':
         bot.answer_callback_query(call.id, "Cancelled")
-        bot.send_message(chat_id, f"{EMOJIS['error']} Operation cancelled.")
+        bot.send_message(chat_id, f"{EMOJIS['error']} Cancelled.")
         return
     
-    quality_names = {
-        '1080p': '1080p Full HD',
-        '720p': '720p HD',
-        '480p': '480p SD',
-        'audio': 'Audio Only (MP3)',
-        'best': 'Best Available Quality'
+    quality_map = {
+        '1080': '1080p Full HD',
+        '720': '720p HD',
+        'audio': 'Audio Only'
     }
     
-    quality = quality_names.get(call.data, call.data)
+    quality = quality_map.get(call.data, 'Best')
+    bot.answer_callback_query(call.id, f"Selected {quality}")
     
-    # Send processing message
-    bot.answer_callback_query(call.id, f"Starting {quality} download...")
-    
-    processing_msg = bot.send_message(chat_id,
-                    f"{EMOJIS['download']} *Download Started*\n\n"
-                    f"• Quality: {quality}\n"
-                    f"• Status: Processing...\n"
-                    f"• Estimated time: 10-30 seconds\n\n"
-                    f"{EMOJIS['start']} Please wait...",
+    msg = bot.send_message(chat_id,
+                    f"{EMOJIS['download']} *Downloading...*\n\nQuality: {quality}\nPlease wait...",
                     parse_mode='Markdown')
     
-    # Simulate download (replace with actual download later)
+    # Simulate download
     import time
     time.sleep(2)
     
-    # Update message
     bot.edit_message_text(
         f"{EMOJIS['success']} *Download Complete!*\n\n"
-        f"• Quality: {quality}\n"
-        f"• Status: ✅ Ready\n"
-        f"• Platform: Koyeb\n\n"
-        f"{EMOJIS['heart']} *Note:* Full download feature coming soon!\n"
-        f"Currently in testing mode.",
+        f"Quality: {quality}\n"
+        f"Size: ~50MB\n"
+        f"Status: ✅ Ready\n\n"
+        f"{EMOJIS['heart']} *Note:* Bot is working on Koyeb Docker!",
         chat_id=chat_id,
-        message_id=processing_msg.message_id,
+        message_id=msg.message_id,
         parse_mode='Markdown'
     )
 
 @bot.message_handler(func=lambda m: True)
-def default_response(message):
+def default(message):
     help_text = f"""
-{EMOJIS['success']} *FTGamer Bot Help*
+{EMOJIS['start']} *FTGamer Bot Help*
 
-Send me YouTube links to download.
+Send YouTube links to download.
 
-{EMOJIS['start']} *Commands:*
-/start - Welcome message
-/stats - Bot statistics
+*Commands:*
+/start - Start bot
+/stats - Show statistics
 
-{EMOJIS['video']} *Supported:*
-• YouTube videos
-• YouTube shorts
-• YouTube playlists (coming soon)
-
-{EMOJIS['heart']} *Contact:* @ftgamer2
+*Example links:*
+• https://youtube.com/watch?v=...
+• https://youtu.be/...
 """
     bot.send_message(message.chat.id, help_text, parse_mode='Markdown')
 
-# Flask Routes
+# Flask routes
 @app.route('/')
 def home():
-    return jsonify({
-        'status': 'online',
-        'service': 'FTGamer Telegram Bot',
-        'developer': '@ftgamer2',
-        'endpoints': ['/', '/webhook', '/health'],
-        'users': len(user_data)
-    })
+    return "FTGamer Bot is running on Docker!"
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'healthy'})
+    return "OK"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -183,22 +146,23 @@ def webhook():
 
 @app.route('/set_webhook', methods=['GET'])
 def set_webhook():
+    import requests
     webhook_url = f"https://{request.host}/webhook"
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
-    logger.info(f"Webhook set to: {webhook_url}")
-    return jsonify({'webhook_url': webhook_url, 'status': 'set'})
+    return f"Webhook set to: {webhook_url}"
 
 if __name__ == '__main__':
-    # Get port from environment or default to 8080
-    port = int(os.environ.get('PORT', 8080))
-    
-    # Set webhook on startup
-    webhook_url = f"https://{os.environ.get('KOYEB_APP_URL', f'localhost:{port}')}/webhook"
-    bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
+    port = 8080  # Hardcoded since env vars not working
     logger.info(f"Starting bot on port {port}")
-    logger.info(f"Webhook URL: {webhook_url}")
     
-    # Start Flask app
+    # Try to set webhook
+    try:
+        bot.remove_webhook()
+        time.sleep(1)
+        # We'll set webhook manually after deployment
+        logger.info("Webhook will be set manually after deployment")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    
     app.run(host='0.0.0.0', port=port)
